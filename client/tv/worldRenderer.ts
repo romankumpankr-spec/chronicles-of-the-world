@@ -93,6 +93,60 @@ function addDesertDetails(scene: THREE.Scene, hex: WorldHex, radius: number): vo
   }
 }
 
+function addSettlement(scene: THREE.Scene, hex: WorldHex, radius: number): void {
+  const base = hexPosition(hex, radius);
+  const isCity = hex.settlement === 'city';
+  const size = isCity ? 0.26 : 0.19;
+  const wall = new THREE.Mesh(
+    new THREE.CylinderGeometry(size, size * 1.12, isCity ? 0.16 : 0.11, 6),
+    new THREE.MeshStandardMaterial({ color: 0x6d5c4b, roughness: 0.9 }),
+  );
+  wall.position.set(base.x, base.y, base.z + (isCity ? 0.15 : 0.12));
+  scene.add(wall);
+
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(size * 0.95, isCity ? 0.22 : 0.16, 5),
+    new THREE.MeshStandardMaterial({ color: 0x9a4638, roughness: 0.88 }),
+  );
+  roof.position.set(base.x, base.y, base.z + (isCity ? 0.34 : 0.27));
+  scene.add(roof);
+
+  if (isCity) {
+    const tower = new THREE.Mesh(
+      new THREE.BoxGeometry(0.09, 0.09, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x7b6854, roughness: 0.9 }),
+    );
+    tower.position.set(base.x + 0.18, base.y - 0.06, base.z + 0.3);
+    scene.add(tower);
+  }
+}
+
+function addResource(scene: THREE.Scene, hex: WorldHex, radius: number): void {
+  if (!hex.resource) return;
+  const base = hexPosition(hex, radius);
+  const color = hex.resource === 'iron' ? 0x4f5960 : hex.resource === 'salt' ? 0xd9d4bd : 0xb08b55;
+  const marker = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.105),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: hex.resource === 'iron' ? 0.3 : 0 }),
+  );
+  marker.position.set(base.x + 0.42, base.y + 0.2, base.z + 0.2);
+  scene.add(marker);
+}
+
+function addRoads(scene: THREE.Scene, hexes: WorldHex[], radius: number): void {
+  const points = hexes.filter((hex) => hex.road);
+  if (points.length < 2) return;
+  const material = new THREE.MeshStandardMaterial({ color: 0x8a7656, roughness: 1 });
+  for (const hex of points) {
+    const base = hexPosition(hex, radius);
+    const geometry = new THREE.BoxGeometry(0.42, 0.09, 0.025);
+    const road = new THREE.Mesh(geometry, material);
+    road.position.set(base.x, base.y, base.z + 0.09);
+    road.rotation.z = ((hex.r % 2) * 0.12) + 0.04;
+    scene.add(road);
+  }
+}
+
 function addRiver(scene: THREE.Scene, hexes: WorldHex[], radius: number): void {
   const byId = new Map(hexes.map((hex) => [hex.id, hex]));
   const seen = new Set<string>();
@@ -103,11 +157,11 @@ function addRiver(scene: THREE.Scene, hexes: WorldHex[], radius: number): void {
     if (seen.has(start.id)) continue;
     const points: THREE.Vector3[] = [];
     let current = start;
-    for (let step = 0; step < 14; step += 1) {
+    for (let step = 0; step < 18; step += 1) {
       if (seen.has(current.id) && current.id !== start.id) break;
       seen.add(current.id);
       const p = hexPosition(current, radius);
-      p.z += 0.12;
+      p.z += 0.14;
       points.push(p);
       if (current.terrain === 'water') break;
       const offsets = current.r % 2 === 0 ? evenOffsets : oddOffsets;
@@ -157,9 +211,12 @@ export function createWorldScene(world: WorldSeed): THREE.Scene {
     if (hex.terrain === 'forest') addForest(scene, hex, radius);
     if (hex.terrain === 'mountain') addMountain(scene, hex, radius);
     if (hex.terrain === 'desert') addDesertDetails(scene, hex, radius);
+    if (hex.settlement !== 'none') addSettlement(scene, hex, radius);
+    addResource(scene, hex, radius);
   }
 
   scene.add(group);
+  addRoads(scene, world.hexes, radius);
   addRiver(scene, world.hexes, radius);
 
   scene.add(new THREE.HemisphereLight(0xdbe8de, 0x18231f, 2.6));
