@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: chronicles-world-tv
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist/tv
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
