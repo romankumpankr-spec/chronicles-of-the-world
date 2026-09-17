@@ -95,7 +95,7 @@ function renderWorld(displayName: string, role: string) {
 
 document.querySelector<HTMLFormElement>('#tv-login')?.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   showLoginError('');
 
