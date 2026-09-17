@@ -8,6 +8,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
+        home: 'index.html',
         tv: 'client/tv/index.html',
         player: 'client/player/index.html',
       },
