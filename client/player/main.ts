@@ -20,7 +20,7 @@ function loginScreen(message = '') {
   shell(`<div class="eyebrow">ХРОНИКИ МИРА</div><h1>Командный терминал</h1><p class="subtitle">Подключение к партии происходит с телефона. Личные решения игрока не видны на TV.</p><form id="login" class="form"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button>Войти</button>${message ? errorText(message) : '<div class="error"></div>'}</form>`);
   document.querySelector<HTMLFormElement>('#login')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const form = event.currentTarget;
+    const form = event.currentTarget as HTMLFormElement;
     const data = new FormData(form);
     const { error } = await supabase.auth.signInWithPassword({ email: String(data.get('email') ?? ''), password: String(data.get('password') ?? '') });
     if (error) { loginScreen('Не удалось войти. Проверьте email и пароль.'); return; }
@@ -32,7 +32,8 @@ function joinScreen(message = '') {
   shell(`<div class="eyebrow">ШАГ 1 / 2</div><h1>Войти в мир</h1><p class="subtitle">Введи код партии, выбери свободный слот и назови своё королевство.</p><form id="find-game" class="form"><label>Код партии<input id="game-code" name="code" inputmode="text" maxlength="6" autocomplete="off" placeholder="ABC123" required></label><button>Найти партию</button>${message ? errorText(message) : '<div class="error"></div>'}</form><div class="step"><p class="step-title">После поиска появятся свободные слоты</p><div class="slots"><div class="note">Код партии сообщается игрокам с экрана TV.</div></div></div>`);
   document.querySelector<HTMLFormElement>('#find-game')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const code = String(new FormData(event.currentTarget).get('code') ?? '').trim().toUpperCase();
+    const form = event.currentTarget as HTMLFormElement;
+    const code = String(new FormData(form).get('code') ?? '').trim().toUpperCase();
     const { data, error } = await supabase.from('games').select('id, code, status, month, player_count').eq('code', code).eq('status', 'lobby').maybeSingle();
     if (error || !data) { joinScreen('Партия с таким кодом не найдена или уже запущена.'); return; }
     state.game = data as Game;
@@ -53,7 +54,8 @@ function renderJoinDetails(message = '') {
   document.querySelector<HTMLFormElement>('#join')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.game || !state.selectedSlot) return;
-    const kingdom = String(new FormData(event.currentTarget).get('kingdom') ?? '').trim();
+    const form = event.currentTarget as HTMLFormElement;
+    const kingdom = String(new FormData(form).get('kingdom') ?? '').trim();
     const { error } = await supabase.rpc('join_game', { p_code: state.game.code, p_slot: state.selectedSlot, p_kingdom_name: kingdom });
     if (error) { renderJoinDetails('Не удалось войти: ' + error.message); return; }
     await playerLobby();
