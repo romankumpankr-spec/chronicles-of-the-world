@@ -1,7 +1,16 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  root: 'client/tv',
+  root: '.',
   server: { port: 5173 },
-  build: { outDir: '../../dist/tv', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        tv: 'client/tv/index.html',
+        player: 'client/player/index.html',
+      },
+    },
+  },
 });
