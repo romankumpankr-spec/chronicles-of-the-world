@@ -19,8 +19,8 @@ function smooth(t: number): number {
 function valueNoise(x: number, y: number, seed: number, scale: number): number {
   const gx = Math.floor(x / scale);
   const gy = Math.floor(y / scale);
-  const tx = smooth((x / scale) - gx);
-  const ty = smooth((y / scale) - gy);
+  const tx = smooth(x / scale - gx);
+  const ty = smooth(y / scale - gy);
   const a = hash2d(gx, gy, seed);
   const b = hash2d(gx + 1, gy, seed);
   const c = hash2d(gx, gy + 1, seed);
@@ -64,20 +64,26 @@ function neighbours(q: number, r: number, width: number, height: number): Array<
 export function generateWorld(seed: number, width: number, height: number): WorldSeed {
   const elevation = buildField(width, height, seed, 0);
   const moisture = buildField(width, height, seed + 41, 13);
+  const shape = buildField(width, height, seed + 91, 27);
   const hexes: WorldHex[] = [];
+
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const maxDistance = Math.hypot(cx, cy);
 
   for (let r = 0; r < height; r += 1) {
     for (let q = 0; q < width; q += 1) {
-      const edge = Math.min(q, width - 1 - q, r, height - 1 - r) / Math.max(1, Math.min(width, height) * 0.5);
-      const continentalBias = Math.min(1, edge * 1.8);
-      const e = elevation[r][q] * 0.78 + continentalBias * 0.22;
+      const distance = Math.hypot(q - cx, (r - cy) * 1.05) / maxDistance;
+      const coastNoise = shape[r][q] * 0.22;
+      const continent = 0.86 - distance * 0.68 + coastNoise;
+      const e = elevation[r][q] * 0.58 + continent * 0.42;
       const m = moisture[r][q];
 
       let terrain: Terrain;
-      if (e < 0.30) terrain = 'water';
-      else if (e > 0.76) terrain = 'mountain';
-      else if (m < 0.25 && e < 0.58) terrain = 'desert';
-      else if (m > 0.48) terrain = 'forest';
+      if (e < 0.31) terrain = 'water';
+      else if (e > 0.72 && m < 0.72) terrain = 'mountain';
+      else if (m < 0.27 && e < 0.60) terrain = 'desert';
+      else if (m > 0.50) terrain = 'forest';
       else terrain = 'plains';
 
       hexes.push({
@@ -99,29 +105,54 @@ export function generateWorld(seed: number, width: number, height: number): Worl
   }
 
   const byId = new Map(hexes.map((hex) => [hex.id, hex]));
+
+  // Small lakes are kept, but isolated one-cell water pockets on land are removed.
+  for (const hex of hexes) {
+    if (hex.terrain !== 'water') continue;
+    const landNeighbours = neighbours(hex.q, hex.r, width, height)
+      .map(([q, r]) => byId.get(`${q}:${r}`)!)
+      .filter((n) => n.terrain !== 'water').length;
+    if (landNeighbours >= 5 && distanceToEdge(hex.q, hex.r, width, height) > 1) {
+      hex.terrain = 'plains';
+      hex.elevation = Math.max(hex.elevation, 0.34);
+    }
+  }
+
   const riverSources = hexes
-    .filter((hex) => hex.terrain === 'mountain' && hex.elevation > 0.82)
+    .filter((hex) => hex.terrain === 'mountain' && hex.elevation > 0.76)
     .sort((a, b) => b.elevation - a.elevation)
-    .filter((_, index) => index % 5 === 0)
-    .slice(0, Math.max(2, Math.floor(width / 7)));
+    .filter((_, index) => index % 4 === 0)
+    .slice(0, Math.max(2, Math.floor(width / 6)));
 
   for (const source of riverSources) {
     let current = source;
     const visited = new Set<string>();
-    for (let step = 0; step < 14; step += 1) {
-      if (current.terrain === 'water') break;
-      current.river = true;
+    for (let step = 0; step < 18; step += 1) {
+      if (visited.has(current.id)) break;
       visited.add(current.id);
+      current.river = true;
+      if (current.terrain === 'water') break;
+
       const candidates = neighbours(current.q, current.r, width, height)
         .map(([q, r]) => byId.get(`${q}:${r}`)!)
         .filter((hex) => !visited.has(hex.id));
       if (candidates.length === 0) break;
+
       const next = candidates
-        .sort((a, b) => a.elevation - b.elevation)[0];
-      if (next.elevation > current.elevation + 0.025 && step > 1) break;
+        .sort((a, b) => {
+          const aScore = a.elevation - (a.terrain === 'water' ? 0.18 : 0);
+          const bScore = b.elevation - (b.terrain === 'water' ? 0.18 : 0);
+          return aScore - bScore;
+        })[0];
+
+      if (next.elevation > current.elevation + 0.045 && step > 1) break;
       current = next;
     }
   }
 
   return { seed: seed >>> 0, width, height, hexes };
+}
+
+function distanceToEdge(q: number, r: number, width: number, height: number): number {
+  return Math.min(q, width - 1 - q, r, height - 1 - r);
 }
