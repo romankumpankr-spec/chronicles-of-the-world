@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { supabase } from '../lib/supabase.ts';
 import { generateWorld } from '../../world/generation/generateWorld.ts';
+import { loadActiveWorld } from './worldState.ts';
 import { createWorldScene } from './worldRenderer.ts';
-import type { WorldHex } from '../../shared/types.ts';
+import type { WorldHex, WorldSeed } from '../../shared/types.ts';
 import './style.css';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -25,6 +26,11 @@ const loginMarkup = `
 
 app.innerHTML = loginMarkup;
 
+function showLoginError(message: string) {
+  const error = document.querySelector<HTMLDivElement>('#login-error');
+  if (error) error.textContent = message;
+}
+
 async function startTvSession() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
@@ -41,28 +47,45 @@ async function startTvSession() {
     return;
   }
 
-  renderWorld(profile.display_name, profile.role);
+  await renderWorld(profile.display_name || 'TV', profile.role);
 }
 
-function showLoginError(message: string) {
-  const error = document.querySelector<HTMLDivElement>('#login-error');
-  if (error) error.textContent = message;
-}
-
-function renderWorld(displayName: string, role: string) {
+async function renderWorld(displayName: string, role: string) {
   app.innerHTML = '<div id="world-root"></div>';
   const root = document.querySelector<HTMLDivElement>('#world-root');
   if (!root) throw new Error('World root not found');
 
+  root.innerHTML = '<div class="world-loading"><div>ЗАГРУЗКА МИРА</div><span>Синхронизация с хроникой...</span></div>';
+
+  let world: WorldSeed;
+  let gameId: string | null = null;
+  let gameCode = 'LOCAL';
+  let month = 1;
+
+  try {
+    const active = await loadActiveWorld();
+    if (active) {
+      world = active.world;
+      gameId = active.gameId;
+      gameCode = active.code;
+      month = active.month;
+    } else {
+      world = generateWorld(20700916, 18, 12);
+    }
+  } catch (error) {
+    console.error('World state load failed', error);
+    world = generateWorld(20700916, 18, 12);
+  }
+
+  root.innerHTML = '';
   const hud = document.createElement('div');
   hud.className = 'tv-hud';
   hud.innerHTML = `
     <div class="tv-brand">ХРОНИКИ МИРА</div>
-    <div class="tv-meta"><span>TV MODE</span><span>${displayName}</span><span>Месяц 1 / 50</span></div>
+    <div class="tv-meta"><span>TV MODE</span><span>${displayName}</span><span>Месяц ${month} / 50</span><span>${gameCode}</span></div>
     <button id="logout" class="logout">Выйти</button>`;
   root.appendChild(hud);
 
-  const world = generateWorld(20700916, 18, 12);
   const hexById = new Map<string, WorldHex>(world.hexes.map((hex) => [hex.id, hex]));
   const scene = createWorldScene(world);
   const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 200);
@@ -81,7 +104,7 @@ function renderWorld(displayName: string, role: string) {
   info.innerHTML = `
     <div class="hex-info-kicker">МИР</div>
     <h2>Выберите территорию</h2>
-    <p>Наведите курсор на hex и нажмите, чтобы открыть сведения.</p>`;
+    <p>${gameId ? 'Данные загружены из World State.' : 'Активной партии пока нет. Показан процедурный прототип.'}</p>`;
   root.appendChild(info);
 
   const hint = document.createElement('div');
@@ -123,12 +146,7 @@ function renderWorld(displayName: string, role: string) {
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(scene.children, true);
-    for (const hit of hits) {
-      if (hit.object instanceof THREE.Mesh && typeof hit.object.userData.hexId === 'string') {
-        return hit.object;
-      }
-    }
-    return null;
+    return hits.find((hit) => hit.object instanceof THREE.Mesh && typeof hit.object.userData.hexId === 'string')?.object as THREE.Mesh | undefined ?? null;
   };
 
   const formatTerrain = (terrain: WorldHex['terrain']) => ({
@@ -136,7 +154,7 @@ function renderWorld(displayName: string, role: string) {
   })[terrain];
 
   const updateInfo = (hex: WorldHex) => {
-    const resource = hex.resource ? hex.resource : 'нет';
+    const resource = hex.resource ?? 'нет';
     const settlement = hex.settlement === 'city' ? 'Город' : hex.settlement === 'settlement' ? 'Поселение' : 'нет';
     info.innerHTML = `
       <div class="hex-info-kicker">ТЕРРИТОРИЯ</div>
@@ -163,7 +181,6 @@ function renderWorld(displayName: string, role: string) {
       lastPointer = { x: event.clientX, y: event.clientY };
       return;
     }
-
     const next = pickHex(event);
     if (next === hovered) return;
     restoreMesh(hovered);
@@ -185,7 +202,6 @@ function renderWorld(displayName: string, role: string) {
     dragging = false;
     renderer.domElement.releasePointerCapture(event.pointerId);
     if (moved) return;
-
     const next = pickHex(event);
     if (!next) return;
     restoreMesh(selected);
@@ -221,12 +237,11 @@ function renderWorld(displayName: string, role: string) {
     location.reload();
   });
 
+  void role;
   function animate() {
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }
-
-  void role;
   animate();
 }
 
@@ -235,17 +250,14 @@ document.querySelector<HTMLFormElement>('#tv-login')?.addEventListener('submit',
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   showLoginError('');
-
   const { error } = await supabase.auth.signInWithPassword({
     email: String(data.get('email') ?? ''),
     password: String(data.get('password') ?? ''),
   });
-
   if (error) {
     showLoginError('Не удалось войти. Проверьте email и пароль.');
     return;
   }
-
   await startTvSession();
 });
 
