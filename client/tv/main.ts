@@ -49,7 +49,7 @@ function showLoginError(message: string) {
 }
 
 function renderWorld(displayName: string, role: string) {
-  app.innerHTML = '<div id="world-root"></div>';
+  app!.innerHTML = '<div id="world-root"></div>';
   const root = document.querySelector<HTMLDivElement>('#world-root');
   if (!root) throw new Error('World root not found');
 
