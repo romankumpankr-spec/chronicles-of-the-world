@@ -106,7 +106,6 @@ export function generateWorld(seed: number, width: number, height: number): Worl
 
   const byId = new Map(hexes.map((hex) => [hex.id, hex]));
 
-  // Small lakes are kept, but isolated one-cell water pockets on land are removed.
   for (const hex of hexes) {
     if (hex.terrain !== 'water') continue;
     const landNeighbours = neighbours(hex.q, hex.r, width, height)
@@ -148,6 +147,43 @@ export function generateWorld(seed: number, width: number, height: number): Worl
       if (next.elevation > current.elevation + 0.045 && step > 1) break;
       current = next;
     }
+  }
+
+  // Seed neutral settlements only for the visual prototype.
+  const settlementCandidates = hexes
+    .filter((hex) => (hex.terrain === 'plains' || hex.terrain === 'forest') && (hex.river || hex.moisture > 0.58))
+    .sort((a, b) => hash2d(a.q, a.r, seed + 700) - hash2d(b.q, b.r, seed + 700));
+  const settlements: WorldHex[] = [];
+  for (const candidate of settlementCandidates) {
+    if (settlements.some((other) => Math.hypot(candidate.q - other.q, candidate.r - other.r) < 4)) continue;
+    candidate.settlement = settlements.length === 0 ? 'city' : 'settlement';
+    candidate.resource = candidate.terrain === 'forest' ? 'wood' : 'grain';
+    settlements.push(candidate);
+    if (settlements.length >= Math.max(4, Math.floor(width / 3))) break;
+  }
+
+  // A few strategic deposits make the first map readable before the economy exists.
+  for (const hex of hexes) {
+    if (hex.resource || hex.terrain === 'water') continue;
+    const roll = hash2d(hex.q + 91, hex.r - 37, seed + 1200);
+    if (hex.terrain === 'mountain' && roll > 0.72) hex.resource = 'iron';
+    else if (hex.terrain === 'desert' && roll > 0.82) hex.resource = 'salt';
+  }
+
+  // Prototype roads connect nearby settlements; later this becomes a player-built system.
+  for (let i = 0; i < settlements.length - 1; i += 1) {
+    const a = settlements[i];
+    const b = settlements[i + 1];
+    const steps = Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r));
+    for (let step = 1; step < steps; step += 1) {
+      const t = step / steps;
+      const q = Math.round(a.q + (b.q - a.q) * t);
+      const r = Math.round(a.r + (b.r - a.r) * t);
+      const roadHex = byId.get(`${q}:${r}`);
+      if (roadHex && roadHex.terrain !== 'water' && roadHex.terrain !== 'mountain') roadHex.road = true;
+    }
+    a.road = true;
+    b.road = true;
   }
 
   return { seed: seed >>> 0, width, height, hexes };
