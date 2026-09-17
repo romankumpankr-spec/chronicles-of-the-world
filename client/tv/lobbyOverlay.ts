@@ -30,13 +30,43 @@ const mount = () => {
   const list = panel.querySelector<HTMLDivElement>('#lobby-list')!;
 
   const render = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      status.textContent = 'Нет активной сессии TV. Войдите заново.';
+      list.innerHTML = '';
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .maybeSingle();
+    if (profileError) {
+      status.textContent = `Ошибка профиля: ${profileError.message}`;
+      return;
+    }
+    if (!profile || !['tv', 'admin'].includes(profile.role)) {
+      status.textContent = 'У этой учётной записи нет роли TV.';
+      return;
+    }
+
     const { data: games, error } = await supabase
       .from('games')
       .select('id, code, status, month, player_count, created_at')
       .in('status', ['lobby', 'active'])
       .order('created_at', { ascending: false });
-    if (error) { status.textContent = 'Не удалось загрузить партии.'; return; }
-    if (!games?.length) { status.textContent = 'Партий пока нет.'; list.innerHTML = ''; return; }
+    if (error) {
+      console.error('TV lobby load failed', error);
+      status.textContent = `Ошибка загрузки партий: ${error.message}`;
+      return;
+    }
+    if (!games?.length) {
+      status.textContent = 'Партий пока нет.';
+      list.innerHTML = '';
+      return;
+    }
+
     status.textContent = 'Партии обновляются автоматически.';
     list.innerHTML = games.map((game) => `
       <article class="lobby-game">
@@ -72,7 +102,11 @@ const mount = () => {
     status.textContent = 'Создаём партию...';
     const { data, error } = await supabase.rpc('create_game', { p_player_count: count });
     button.disabled = false;
-    if (error) { status.textContent = `Ошибка: ${error.message}`; return; }
+    if (error) {
+      console.error('TV create game failed', error);
+      status.textContent = `Ошибка создания: ${error.message}`;
+      return;
+    }
     const created = Array.isArray(data) ? data[0] : data;
     status.textContent = created?.game_code ? `Партия создана: ${created.game_code}` : 'Партия создана.';
     await render();
